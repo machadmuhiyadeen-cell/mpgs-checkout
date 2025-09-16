@@ -1,0 +1,80 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Secure Checkout</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; padding: 40px; }
+      .card { max-width: 520px; margin: 0 auto; border: 1px solid #eee; border-radius: 12px; padding: 24px; }
+      button { padding: 12px 18px; border-radius: 8px; border: none; font-size: 16px; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Pay securely</h1>
+      <p>This will redirect you to Mastercard's Hosted Payment Page.</p>
+      <p>
+        Amount: <span id="amt">49.00</span> <span id="cur">EUR</span>
+      </p>
+      <button id="payBtn">Pay now</button>
+      <div id="msg" style="margin-top: 16px;"></div>
+    </div>
+
+    <script src="https://eu-gateway.mastercard.com/checkout/version/100/checkout.js"
+            data-error="errorCallback"
+            data-cancel="onCancel"></script>
+
+    <script>
+      function getParam(name, defVal) {
+        const url = new URL(location.href);
+        return url.searchParams.get(name) || defVal;
+      }
+
+      async function start() {
+        const amount = parseFloat(getParam('amount', '49')).toFixed(2);
+        const currency = getParam('currency', 'EUR').toUpperCase();
+        const description = getParam('desc', 'Order');
+        const orderId = getParam('orderId', `ORD-${Date.now()}`);
+
+        document.getElementById('amt').textContent = amount;
+        document.getElementById('cur').textContent = currency;
+
+        const resp = await fetch('/api/create-session', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ amount, currency, orderId, description })
+        });
+
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          document.getElementById('msg').textContent = 'Error creating session';
+          console.error('Create session error', err);
+          return;
+        }
+
+        const { sessionId, merchant } = await resp.json();
+
+        Checkout.configure({
+          merchant,
+          session: { id: sessionId },
+          order: { amount, currency },
+          interaction: { operation: 'PURCHASE' }
+        });
+
+        // Redirect to full-page Hosted Payment Page
+        Checkout.showPaymentPage();
+      }
+
+      function errorCallback(error) {
+        console.error('MPGS error', error);
+        document.getElementById('msg').textContent = 'Payment error. Please try again.';
+      }
+      function onCancel() {
+        window.location.href = '/cancel';
+      }
+
+      document.getElementById('payBtn').addEventListener('click', start);
+    </script>
+  </body>
+</html>
